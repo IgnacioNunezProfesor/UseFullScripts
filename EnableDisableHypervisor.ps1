@@ -16,7 +16,7 @@ if (-not (Test-IsAdmin)) {
 # Comprobar el estado actual del Hypervisor
 $bcdOutput = bcdedit | Select-String "hypervisorlaunchtype"
 
-if ($bcdOutput -match "On") {
+if ($bcdOutput -match "On" -or $bcdOutput -match "Auto") {
     Write-Host "Hypervisor está ACTIVADO. Procediendo a DESACTIVAR..." -ForegroundColor Cyan
     bcdedit /set hypervisorlaunchtype off
     Write-Host "Hypervisor DESACTIVADO. Reinicia el sistema para aplicar los cambios." -ForegroundColor Green
