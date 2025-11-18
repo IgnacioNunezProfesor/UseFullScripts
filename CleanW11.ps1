@@ -34,14 +34,36 @@ foreach ($path in $paths) {
             Remove-Item -Path $path -Recurse -Force -ErrorAction Stop
         }
         catch {
-            Write-Warning "Error al limpiar ${path}"
+            $errMsg = if ($_.Exception) { $_.Exception.Message } else { $_.ToString() }
+            Write-Warning "Error al limpiar ${path}: ${errMsg}"
         }
     }
 }
 
 # Vacía la Papelera de reciclaje
 Write-Host "Vaciando Papelera de reciclaje..." -ForegroundColor Cyan
-Get-RecycleBin -ErrorAction SilentlyContinue | Clear-RecycleBin -Force -ErrorAction SilentlyContinue
+try {
+    if (Get-Command -Name Clear-RecycleBin -ErrorAction SilentlyContinue) {
+        # Clear-RecycleBin está disponible en PowerShell; usarla directamente
+        Clear-RecycleBin -Force -ErrorAction SilentlyContinue -Confirm:$false
+    }
+    else {
+        # Fallback para entornos donde Clear-RecycleBin no exista: usar Shell.Application COM
+        $shell = New-Object -ComObject Shell.Application
+        $recycle = $shell.Namespace(0xA)
+        if ($recycle) {
+            # Invocar el verbo "empty" en la Papelera
+            $null = $recycle.Items() | ForEach-Object { $recycle.InvokeVerb("empty") }
+        }
+        else {
+            throw "No se pudo acceder a la Papelera de reciclaje mediante COM."
+        }
+    }
+    Write-Host "Papelera vaciada." -ForegroundColor Yellow
+}
+catch {
+    Write-Warning "No se pudo vaciar la Papelera de reciclaje: $($_.Exception.Message)"
+}
 
 # Elimina caché de miniaturas
 Write-Host "Eliminando caché de miniaturas..." -ForegroundColor Cyan
@@ -58,12 +80,19 @@ Start-Service -Name wuauserv -ErrorAction SilentlyContinue
 # Limpieza de registros de eventos
 Write-Host "Limpiando registros de eventos..." -ForegroundColor Cyan
 wevtutil el | ForEach-Object {
-    try {
-        wevtutil cl $_ -ErrorAction Stop
-        Write-Host "Registro $_ limpiado." -ForegroundColor Yellow
-    }
-    catch {
-        Write-Warning "Error al limpiar registro"
+    $log = $_.Trim()
+    if ($log) {
+        try {
+            & wevtutil.exe cl "$log"
+            if ($LASTEXITCODE -ne 0) {
+                throw "wevtutil devolvió código de salida $LASTEXITCODE para el registro '$log'."
+            }
+            Write-Host "Registro $log limpiado." -ForegroundColor Yellow
+        }
+        catch {
+            $errMsg = if ($_.Exception) { $_.Exception.Message } else { $_.ToString() }
+            Write-Warning "Error al limpiar registro ${log}: ${errMsg}"
+        }
     }
 }   
 
