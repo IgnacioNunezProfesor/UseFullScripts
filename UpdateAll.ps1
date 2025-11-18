@@ -35,7 +35,7 @@ function ActualizarTodo {
     Write-Host "`n📄 Actualizando Office 365..."
     $officeUpdater = "C:\Program Files\Common Files\Microsoft Shared\ClickToRun\OfficeC2RClient.exe"
     if (Test-Path $officeUpdater) {
-        Start-Process -FilePath $officeUpdater -ArgumentList "update user forceappshutdown=true"
+        Start-Process -FilePath $officeUpdater -ArgumentList "/update user forceappshutdown=false displaylevel=True" 
     }
     else {
         Write-Warning "No se encontró el actualizador de Office en la ruta esperada."
