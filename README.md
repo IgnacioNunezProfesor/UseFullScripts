@@ -39,7 +39,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ```powershell
 # Navegar a la carpeta del script
-cd C:\Users\profe\OneDrive\UseFullScripts
+cd \UseFullScripts
 
 # Ejecutar un script
 .\CleanW11.ps1
@@ -188,10 +188,10 @@ Clic derecho en el script → **Crear acceso directo** → Editar propiedades:
 **Uso:**
 ```powershell
 # Parámetro obligatorio: -Root o posición 0
-.\UnzipAll.ps1 -Root "C:\Users\profe\Descargas"
+.\UnzipAll.ps1 -Root ".\Descargas"
 
 # O sin nombre de parámetro
-.\UnzipAll.ps1 "C:\Users\profe\Descargas"
+.\UnzipAll.ps1 ".\Descargas"
 ```
 
 **Ejemplo Práctico:**
