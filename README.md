@@ -10,8 +10,8 @@ Colección de scripts PowerShell útiles para administración y mantenimiento de
 
 - [Requisitos Previos](#requisitos-previos)
 - [Cómo Ejecutar los Scripts](#cómo-ejecutar-los-scripts)
-- [Descripción de Scripts](#descripción-de-scripts)
-- [Notas de Seguridad](#notas-de-seguridad)
+- [Descripción de Scripts](#-descripción-de-scripts)
+- [Notas de Seguridad](#-notas-de-seguridad)
 
 ---
 
@@ -51,6 +51,7 @@ powershell -ExecutionPolicy Bypass -File .\CleanW11.ps1
 ### Opción 2: Crear un Acceso Directo
 
 Clic derecho en el script → **Crear acceso directo** → Editar propiedades:
+
 - Destino: `powershell.exe -ExecutionPolicy Bypass -File "C:\ruta\al\script.ps1"`
 - Opciones avanzadas → Marcar "Ejecutar como administrador"
 
@@ -63,6 +64,7 @@ Clic derecho en el script → **Crear acceso directo** → Editar propiedades:
 **Propósito:** Limpieza profunda de archivos temporales y caché del sistema Windows 11
 
 **Qué Hace:**
+
 - Detiene temporalmente el servicio `wuauserv` (Windows Update)
 - Limpia carpetas de archivos temporales:
   - `%TEMP%` (archivos temporales del usuario)
@@ -75,6 +77,7 @@ Clic derecho en el script → **Crear acceso directo** → Editar propiedades:
 **Requisitos:** Permisos de administrador
 
 **Cuándo Usarlo:**
+
 - Cuando el sistema esté lento
 - Después de eliminar programas grandes
 - Para liberar espacio en disco
@@ -93,16 +96,19 @@ Clic derecho en el script → **Crear acceso directo** → Editar propiedades:
 **Propósito:** Activar o desactivar el Hipervisor de Windows (Hyper-V, virtualización)
 
 **Qué Hace:**
+
 - Verifica el estado actual del Hipervisor
 - Si está **ACTIVADO**: Lo desactiva
 - Si está **DESACTIVADO**: Lo activa
 - Muestra el estado resultante
 
-**Requisitos:** 
+**Requisitos:**
+
 - Permisos de administrador
 - Procesador compatible con virtualización
 
 **Cuándo Usarlo:**
+
 - Cuando quieras usar software de virtualización como VirtualBox o VMware (desactivar Hyper-V)
 - Cuando necesites Hyper-V para máquinas virtuales (activar)
 - Para troubleshooting de problemas de rendimiento
@@ -120,16 +126,19 @@ Clic derecho en el script → **Crear acceso directo** → Editar propiedades:
 **Propósito:** Actualizar las definiciones de virus y realizar escaneo completo con Microsoft Defender
 
 **Qué Hace:**
+
 - Ubica la herramienta de línea de comandos de Defender (`MpCmdRun.exe`)
 - Descarga las últimas definiciones de virus y malware
 - Ejecuta un escaneo completo del sistema
 - Muestra indicadores visuales del progreso
 
-**Requisitos:** 
+**Requisitos:**
+
 - Permisos de administrador
 - Microsoft Defender instalado y activo
 
 **Cuándo Usarlo:**
+
 - Mantenimiento de seguridad regular (semanal o mensual)
 - Después de detectar comportamientos sospechosos
 - Como parte de una rutina de limpieza
@@ -147,6 +156,7 @@ Clic derecho en el script → **Crear acceso directo** → Editar propiedades:
 **Propósito:** Activar o desactivar la telemetría y recopilación de datos de Windows 11
 
 **Qué Hace:**
+
 - Permite elegir entre **Enable** (Activar) o **Disable** (Desactivar)
 - Modifica la configuración de recopilación de datos en el registro
 - Detiene/inicia servicios de telemetría:
@@ -157,10 +167,12 @@ Clic derecho en el script → **Crear acceso directo** → Editar propiedades:
 **Requisitos:** Permisos de administrador
 
 **Cuándo Usarlo:**
+
 - **Desactivar:** Para mejorar privacidad, reducir el uso de internet o cuando trabajes con datos sensibles
 - **Activar:** Para problemas de diagnóstico o si necesitas que Microsoft recaba datos de tu sistema
 
 **Ejemplos de Uso:**
+
 ```powershell
 # Desactivar telemetría
 .\ToggleTelemetryW11.ps1 -State Disable
@@ -176,16 +188,19 @@ Clic derecho en el script → **Crear acceso directo** → Editar propiedades:
 **Propósito:** Extraer recursivamente archivos .zip y .rar en una carpeta y sus subcarpetas
 
 **Qué Hace:**
+
 - Busca todos los archivos `.zip` y `.rar` en la carpeta raíz especificada
 - Extrae cada archivo en su carpeta contenedora (no crea subcarpetas adicionales)
 - Utiliza 7-Zip como herramienta de descompresión
 - Soporta búsqueda recursiva en subcarpetas
 
 **Requisitos:**
+
 - Permisos de lectura/escritura en la carpeta
 - **7-Zip instalado** (ubicaciones por defecto: `Program Files` o `Program Files (x86)`)
 
 **Uso:**
+
 ```powershell
 # Parámetro obligatorio: -Root o posición 0
 .\UnzipAll.ps1 -Root ".\Descargas"
@@ -195,13 +210,16 @@ Clic derecho en el script → **Crear acceso directo** → Editar propiedades:
 ```
 
 **Ejemplo Práctico:**
-```
+
+```text
 Estructura antes:
 C:\Datos\
 ├── archivo1.zip
 └── Subcarpeta\
     └── archivo2.rar
+```
 
+```text
 Estructura después (después del script):
 C:\Datos\
 ├── archivo1 (archivos extraídos)
@@ -210,6 +228,7 @@ C:\Datos\
 ```
 
 **Cuándo Usarlo:**
+
 - Descargas en lote que necesitan extracción
 - Organizando archivos comprimidos
 - Automatizando procesos de preparación de datos
@@ -221,18 +240,21 @@ C:\Datos\
 **Propósito:** Actualizar el sistema completo: Windows, aplicaciones de Microsoft Store y software instalado
 
 **Qué Hace:**
+
 - **Actualización de Windows:** Busca e instala todas las actualizaciones disponibles del SO
 - **Microsoft Store:** Actualiza todas las aplicaciones de la tienda
 - **Winget:** Actualiza todo el software instalado que fue instalado con Winget
 - **Office 365:** Actualiza Microsoft Office si está instalado
 
 **Requisitos:**
+
 - Permisos de administrador
 - Conexión a internet
 - Winget instalado (disponible en Windows 11 por defecto)
 - PSWindowsUpdate (el script lo instala automáticamente)
 
 **Cuándo Usarlo:**
+
 - Actualización completa del sistema (semanal o mensual)
 - Antes de instalar software nuevo
 - Tras reinstalar Windows
@@ -250,6 +272,7 @@ C:\Datos\
 **Propósito:** Reparar errores de Windows Update limpiando caché y reconfigurando servicios
 
 **Qué Hace:**
+
 - Detiene los servicios relacionados con Windows Update:
   - `wuauserv` (Windows Update)
   - `cryptSvc` (Servicio Criptográfico)
@@ -266,12 +289,14 @@ C:\Datos\
 **Requisitos:** Permisos de administrador
 
 **Cuándo Usarlo:**
+
 - Cuando Windows Update falla o se queda atascado
 - Errores tipo `0x80070490`, `0x80073712`, etc.
 - Cuando el sistema no puede instalar actualizaciones
 - Después de actualizaciones fallidas
 
 **Importante:**
+
 - El escaneo SFC puede tardar 30+ minutos
 - Se recomienda **reiniciar el sistema** después de este script
 - Tras el reinicio, intenta actualizar nuevamente
@@ -308,7 +333,7 @@ Todos estos scripts requieren permisos elevados de administrador. Si se ejecutan
 
 ### 📋 Orden Recomendado de Ejecución
 
-```
+```text
 1. RunADefender.ps1        → Escanear para detectar malware
 2. UpdateAll.ps1           → Actualizar Windows y aplicaciones
 3. CleanW11.ps1            → Limpiar archivos temporales
@@ -322,6 +347,7 @@ Todos estos scripts requieren permisos elevados de administrador. Si se ejecutan
 ## 📞 Solución de Problemas
 
 ### El script no se ejecuta
+
 ```powershell
 # Verificar política de ejecución
 Get-ExecutionPolicy
@@ -331,10 +357,12 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
 ### Acceso denegado / No hay suficientes permisos
+
 - Ejecuta PowerShell como administrador (clic derecho → "Ejecutar como administrador")
 - Los scripts incluyen auto-elevación, pero a veces necesita confirmación manual
 
 ### El script se abre y cierra rápidamente
+
 - Abre PowerShell como administrador
 - Navega a la carpeta del script
 - Ejecuta manualmente: `.\ScriptName.ps1`
