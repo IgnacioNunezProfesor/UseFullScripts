@@ -26,7 +26,11 @@ if (-not $sevenZipCmd) {
         "$env:ProgramFiles\7-Zip\7z.exe",
         "$env:ProgramFiles(x86)\7-Zip\7z.exe"
     )
-    foreach ($c in $candidates) { if (Test-Path $c) { $sevenZipCmd = $c; break } }
+    foreach ($c in $candidates) { 
+        if (Test-Path $c) { 
+            $sevenZipCmd = $c; 
+            break } 
+        }
 }
 
 $archives = Get-ChildItem -LiteralPath $Root -Recurse -File -Include *.zip, *.rar -ErrorAction SilentlyContinue
@@ -39,7 +43,7 @@ if (-not $archives) {
 foreach ($a in $archives) {
     $full = $a.FullName
     $dest = $a.DirectoryName
-    Write-Output "Extracting '$full' -> '$dest'"
+    Write-Output "Extracting '$full' -> '$dest'`n"
 
     switch ($a.Extension.ToLower()) {
         '.zip' {
@@ -50,7 +54,9 @@ foreach ($a in $archives) {
                 if ($sevenZipCmd) {
                     # fallback to 7z for problematic zip files
                     & $sevenZipCmd x -y "-o$dest" -- $full 2>&1 | Write-Verbose
-                    if ($LASTEXITCODE -ne 0) { Write-Warning "7z failed for $full" }
+                    if ($LASTEXITCODE -ne 0) { 
+                        Write-Warning "7z failed for $full `n" 
+                    }
                 }
                 else {
                     Write-Warning "Failed to extract ZIP and 7-Zip not available: $full"
