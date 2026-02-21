@@ -12,19 +12,20 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 function ActualizarTodo {
     # Actualizar Windows
     Write-Host "`n🔄 Buscando e instalando actualizaciones de Windows..."
-    Install-Module PSWindowsUpdate -Force -Scope CurrentUser
+    if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
+        Install-Module PSWindowsUpdate -Force -Scope CurrentUser
+    }
     Import-Module PSWindowsUpdate
     Get-WindowsUpdate -AcceptAll -Install -AutoReboot
 
     # Actualizar aplicaciones de Microsoft Store
     Write-Host "`n🛍️ Actualizando aplicaciones de Microsoft Store..."
-    Get-AppxPackage | ForEach-Object {
-        try {
-            Start-Process -FilePath "winget" -ArgumentList "upgrade --id $($_.PackageFamilyName) --silent" -WindowStyle Hidden
-        }
-        catch {
-            Write-Warning "No se pudo actualizar el paquete: $($_.Name)"
-        }
+    $msStoreApp = Get-AppxPackage -Name "Microsoft.WindowsStore"
+    if ($msStoreApp) {
+        Add-AppxPackage -Path $msStoreApp.InstallLocation -ErrorAction SilentlyContinue
+    }
+    else {
+        Write-Warning "Microsoft Store no está instalado."
     }
 
     # Actualizar software instalado con Winget

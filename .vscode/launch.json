@@ -1,0 +1,11 @@
+{
+    "configurations": [
+        {
+            "name": "PowerShell Launch UpdateAll",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/UpdateAll.ps1",
+            "cwd": "${cwd}"
+        }
+    ]
+}
