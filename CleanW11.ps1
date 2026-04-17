@@ -101,3 +101,41 @@ Write-Host "Ejecutando Liberador de espacio en disco..." -ForegroundColor Cyan
 Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -Wait
 
 Write-Host "Limpieza completada con éxito." -ForegroundColor Green
+
+
+# Obtiene aplicaciones instaladas
+Write-Host "Obteniendo aplicaciones instaladas..." -ForegroundColor Cyan
+$installedApps = @()
+$registryPaths = @(
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+    "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+)
+
+foreach ($regPath in $registryPaths) {
+    if (Test-Path $regPath) {
+        $installedApps += Get-ItemProperty "$regPath\*" -ErrorAction SilentlyContinue | 
+            Where-Object { $_.DisplayName } | 
+            Select-Object -ExpandProperty DisplayName
+    }
+}
+
+# Verifica carpetas en Program Files sin aplicaciones instaladas
+Write-Host "Verificando carpetas en Program Files..." -ForegroundColor Cyan
+$programFiles = @("$env:ProgramFiles", "${env:ProgramFiles(x86)}")
+
+foreach ($folder in $programFiles) {
+    if (Test-Path $folder) {
+        Get-ChildItem -Path $folder -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            $folderName = $_.Name
+            $hasExecutables = @(Get-ChildItem -Path $_.FullName -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue).Count -gt 0
+            
+            if (-not $hasExecutables) {
+                if ($installedApps -notcontains $folderName) {
+                    Write-Warning "Carpeta sin ejecutables y no registrada: $($_.FullName)"
+                }
+            }
+        }
+    }
+}
+
+Write-Host "Verificación completada." -ForegroundColor Green
