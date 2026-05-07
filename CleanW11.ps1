@@ -97,10 +97,38 @@ wevtutil el | ForEach-Object {
 }   
 
 # Ejecuta Liberador de espacio en disco (cleanmgr)
+Write-Host "Reduciendo el almacén de componentes con DISM..." -ForegroundColor Cyan
+try {
+    & dism.exe /online /Cleanup-Image /StartComponentCleanup /ResetBase
+    Write-Host "Almacén de componentes reducido." -ForegroundColor Yellow
+}
+catch {
+    Write-Warning "No se pudo ejecutar DISM: $($_.Exception.Message)"
+}
+
 Write-Host "Ejecutando Liberador de espacio en disco..." -ForegroundColor Cyan
 Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -Wait
 
 Write-Host "Limpieza completada con éxito." -ForegroundColor Green
+
+# Limpieza del caché de parches de MSI
+Write-Host "Limpiando caché de parches de MSI..." -ForegroundColor Cyan
+try {
+    Stop-Service -Name msiserver -Force -ErrorAction Stop
+    New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\Installer" -Name "MaxPatchCacheSize" -Value 0 -PropertyType DWord -Force -ErrorAction Stop
+    $patchCachePath = "$env:WINDIR\Installer\$PatchCache$"
+    if (Test-Path $patchCachePath) {
+        Remove-Item -Path $patchCachePath -Recurse -Force -ErrorAction Stop
+    }
+    Start-Service -Name msiserver -ErrorAction Stop
+    Stop-Service -Name msiserver -Force -ErrorAction Stop
+    New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\Installer" -Name "MaxPatchCacheSize" -Value 10 -PropertyType DWord -Force -ErrorAction Stop
+    Start-Service -Name msiserver -ErrorAction Stop
+    Write-Host "Caché de parches de MSI limpiado." -ForegroundColor Yellow
+}
+catch {
+    Write-Warning "Error al limpiar caché de parches de MSI: $($_.Exception.Message)"
+}
 
 
 # Obtiene aplicaciones instaladas
@@ -131,7 +159,9 @@ foreach ($folder in $programFiles) {
             
             if (-not $hasExecutables) {
                 if ($installedApps -notcontains $folderName) {
-                    Write-Warning "Carpeta sin ejecutables y no registrada: $($_.FullName)"
+                    $folderSize = (Get-ChildItem -Path $_.FullName -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+                    $folderSizeMB = [math]::Round($folderSize / 1MB, 2)
+                    Write-Warning "Carpeta sin ejecutables y no registrada: $($_.FullName) - Tamaño: $folderSizeMB MB"
                 }
             }
         }
