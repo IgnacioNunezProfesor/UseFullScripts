@@ -1,5 +1,6 @@
 # Script para instalar Oh My Posh en Windows 11 y configurar un tema aleatorio.
 # Este script actualiza el perfil de PowerShell para usar el tema seleccionado.
+$defaultTheme="takuya.omp.json"
 
 function EnsureOhMyPosh {
     if (-not (Get-Command oh-my-posh -ErrorAction SilentlyContinue)) {
@@ -91,7 +92,8 @@ if ($IsWindows -and -not ([Security.Principal.WindowsPrincipal] [Security.Princi
 }
 
 EnsureOhMyPosh
-$themeName = Get-RandomOhMyPoshTheme
+#$themeName = Get-RandomOhMyPoshTheme
+$themeName = $defaultTheme
 if (-not $themeName) { exit 1 }
 
 Write-Host "Tema seleccionado: $themeName" -ForegroundColor Yellow
