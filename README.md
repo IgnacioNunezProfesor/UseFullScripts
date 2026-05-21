@@ -11,6 +11,7 @@ Colección de scripts PowerShell útiles para administración y mantenimiento de
 - [Requisitos Previos](#requisitos-previos)
 - [Cómo Ejecutar los Scripts](#cómo-ejecutar-los-scripts)
 - [Descripción de Scripts](#-descripción-de-scripts)
+- [Personalización del Terminal](#-personalización-del-terminal)
 - [Notas de Seguridad](#-notas-de-seguridad)
 
 ---
@@ -304,6 +305,34 @@ C:\Datos\
 ```powershell
 .\WupdateError.ps1
 ```
+
+---
+
+## 🎨 Personalización del Terminal
+
+### **InstallOHMyPosh.ps1**
+
+**¿Qué es Oh My Posh?**
+Es un motor de temas para cualquier shell que permite personalizar el prompt de tu terminal con iconos, colores y datos útiles (como el estado de Git, nivel de batería o versión de Node.js).
+
+**Qué Hace el Script:**
+- Instala **Oh My Posh** mediante Winget.
+- Instala una **Nerd Font** (Meslo LGM NF) necesaria para ver los iconos correctamente.
+- Configura tu perfil de PowerShell (`$PROFILE`) para que el tema se cargue automáticamente al abrir la terminal.
+- Establece un tema predeterminado (puedes cambiarlo editando el perfil).
+
+**Requisitos:**
+- Conexión a internet.
+- Ejecutar PowerShell como administrador para la instalación de fuentes.
+
+**Uso:**
+```powershell
+.\InstallOHMyPosh.ps1
+```
+
+**Nota:** Después de la ejecución, es posible que debas cambiar la fuente de tu terminal (Windows Terminal -> Configuración -> Perfiles -> Apariencia -> Fuente) a **"MesloLGM Nerd Font"** para que los iconos se vean correctamente.
+
+**Tiempo Aproximado:** 3-5 minutos.
 
 ---
 
