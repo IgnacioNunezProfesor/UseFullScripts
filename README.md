@@ -316,16 +316,19 @@ C:\Datos\
 Es un motor de temas para cualquier shell que permite personalizar el prompt de tu terminal con iconos, colores y datos útiles (como el estado de Git, nivel de batería o versión de Node.js).
 
 **Qué Hace el Script:**
+
 - Instala **Oh My Posh** mediante Winget.
 - Instala una **Nerd Font** (Meslo LGM NF) necesaria para ver los iconos correctamente.
 - Configura tu perfil de PowerShell (`$PROFILE`) para que el tema se cargue automáticamente al abrir la terminal.
 - Establece un tema predeterminado (puedes cambiarlo editando el perfil).
 
 **Requisitos:**
+
 - Conexión a internet.
 - Ejecutar PowerShell como administrador para la instalación de fuentes.
 
 **Uso:**
+
 ```powershell
 .\InstallOHMyPosh.ps1
 ```
