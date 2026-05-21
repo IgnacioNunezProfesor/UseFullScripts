@@ -1,27 +1,44 @@
-# Instala Oh My Posh y configura un tema aleatorio cada vez que se ejecute.
-# Guarda este script como .ps1 y ejecútalo en PowerShell.
+# Script para instalar Oh My Posh en Windows 11 y configurar un tema aleatorio.
+# Este script actualiza el perfil de PowerShell para usar el tema seleccionado.
 
-function Ensure-OhMyPosh {
+function EnsureOhMyPosh {
     if (-not (Get-Command oh-my-posh -ErrorAction SilentlyContinue)) {
         Write-Host "Instalando Oh My Posh..." -ForegroundColor Green
         if (Get-Command winget -ErrorAction SilentlyContinue) {
             winget install --id JanDeDobbeleer.OhMyPosh -e --accept-source-agreements --accept-package-agreements | Out-Null
+            # Forzar la recarga de la ruta para que el comando esté disponible de inmediato
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
         }
         else {
             Install-Module oh-my-posh -Scope CurrentUser -Force -AllowClobber | Out-Null
         }
     }
-    Import-Module oh-my-posh -ErrorAction SilentlyContinue | Out-Null
+
+    # Asegurar que los temas estén descargados y la variable de entorno configurada
+    if (-not $env:POSH_THEMES_PATH) {
+        $env:POSH_THEMES_PATH = Join-Path $env:LOCALAPPDATA "oh-my-posh\themes"
+    }
+    
+    if (-not (Test-Path $env:POSH_THEMES_PATH)) {
+        Write-Host "Descargando temas de Oh My Posh..." -ForegroundColor Cyan
+        New-Item -ItemType Directory -Path $env:POSH_THEMES_PATH -Force | Out-Null
+    }
+
+    # Comprobar si hay archivos de temas, si no, descargarlos
+    if (-not (Get-ChildItem -Path $env:POSH_THEMES_PATH -Filter "*.omp.json" -ErrorAction SilentlyContinue)) {
+        Invoke-WebRequest -Uri "https://github.com/JanDeDobbeleer/oh-my-posh/releases/latest/download/themes.zip" -OutFile "$env:TEMP\themes.zip"
+        Expand-Archive -Path "$env:TEMP\themes.zip" -DestinationPath $env:POSH_THEMES_PATH -Force
+        Remove-Item "$env:TEMP\themes.zip"
+    }
 }
 
 function Get-RandomOhMyPoshTheme {
-    $themes = @()
-
-    if (Get-Command Get-PoshThemes -ErrorAction SilentlyContinue) {
-        $themes = Get-PoshThemes | Select-Object -ExpandProperty Name
-    }
-    else {
-        $themes = oh-my-posh --list 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne 'Themes:' }
+    # Intenta obtener los temas buscando archivos .omp.json en la ruta de temas
+    $themes = Get-ChildItem -Path $env:POSH_THEMES_PATH -Filter "*.omp.json" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty BaseName
+    
+    # Fallback: si no hay archivos, intenta usar el comando oficial
+    if (-not $themes) {
+        $themes = oh-my-posh theme get --list | ConvertFrom-Json | Select-Object -ExpandProperty name -ErrorAction SilentlyContinue
     }
 
     if (-not $themes) {
@@ -37,16 +54,10 @@ function Get-ThemePath {
         [string]$ThemeName
     )
 
-    if (Get-Command Get-PoshThemes -ErrorAction SilentlyContinue) {
-        return (Get-PoshThemes | Where-Object { $_.Name -eq $ThemeName } | Select-Object -ExpandProperty Path)
-    }
-
-    $config = oh-my-posh --init --shell pwsh --config $ThemeName 2>$null
-    if ($config) {
-        return $ThemeName
-    }
-
-    return $null
+    # Intenta obtener la ruta local del tema
+    $themePath = Join-Path $env:POSH_THEMES_PATH "$ThemeName.omp.json"
+    if (Test-Path $themePath) { return $themePath }
+    return $ThemeName # Retorna el nombre si no encuentra la ruta física
 }
 
 function Update-ProfileWithTheme {
@@ -64,17 +75,22 @@ function Update-ProfileWithTheme {
     $profileContent = Get-Content -Path $profileFile -Raw -ErrorAction SilentlyContinue
 
     if ($profileContent -match [regex]::Escape($markerStart) -and $profileContent -match [regex]::Escape($markerEnd)) {
-        $profileContent = [regex]::Replace($profileContent, "(?s)${markerStart}.*?${markerEnd}", "$markerStart`r`noh-my-posh init pwsh --config \"$ThemePath\" | Invoke-Expression`r`n$markerEnd")
+        $profileContent = [regex]::Replace($profileContent, "(?s)${markerStart}.*?${markerEnd}", "$markerStart`r`noh-my-posh init pwsh --config `"$ThemePath`" | Invoke-Expression`r`n$markerEnd")
     }
     else {
-        $profileContent += "`r`n$markerStart`r`noh-my-posh init pwsh --config \"$ThemePath\" | Invoke-Expression`r`n$markerEnd`r`n"
+        $profileContent += "`r`n$markerStart`r`noh-my-posh init pwsh --config `"$ThemePath`" | Invoke-Expression`r`n$markerEnd`r`n"
     }
 
     Set-Content -Path $profileFile -Value $profileContent -Force
     Write-Host "Perfil actualizado en $profileFile" -ForegroundColor Cyan
 }
 
-Ensure-OhMyPosh
+# --- Ejecución Principal ---
+if ($IsWindows -and -not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Warning "Algunas instalaciones de Winget pueden requerir permisos de administrador."
+}
+
+EnsureOhMyPosh
 $themeName = Get-RandomOhMyPoshTheme
 if (-not $themeName) { exit 1 }
 
@@ -87,4 +103,4 @@ if (-not $themePath) {
 
 oh-my-posh init pwsh --config "$themePath" | Invoke-Expression
 Update-ProfileWithTheme -ThemePath $themePath
-Write-Host "Oh My Posh configurado con el tema aleatorio: $themeName" -ForegroundColor Green
+Write-Host "¡Listo! Oh My Posh configurado con el tema: $themeName" -ForegroundColor Green

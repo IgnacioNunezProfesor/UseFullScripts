@@ -6,6 +6,13 @@
             "request": "launch",
             "script": "${workspaceFolder}/UpdateAll.ps1",
             "cwd": "${cwd}"
+        },
+                {
+            "name": "PowerShell Launch Install OhMyPosh",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/InstallOHMyPosh.ps1",
+            "cwd": "${cwd}"
         }
     ]
 }
