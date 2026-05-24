@@ -1,6 +1,6 @@
 # Script para instalar Oh My Posh en Windows 11 y configurar un tema aleatorio.
 # Este script actualiza el perfil de PowerShell para usar el tema seleccionado.
-$defaultTheme="takuya.omp.json"
+$defaultTheme = "takuya.omp.json"
 
 function EnsureOhMyPosh {
     if (-not (Get-Command oh-my-posh -ErrorAction SilentlyContinue)) {
@@ -8,7 +8,7 @@ function EnsureOhMyPosh {
         if (Get-Command winget -ErrorAction SilentlyContinue) {
             winget install --id JanDeDobbeleer.OhMyPosh -e --accept-source-agreements --accept-package-agreements | Out-Null
             # Forzar la recarga de la ruta para que el comando esté disponible de inmediato
-            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
         }
         else {
             Install-Module oh-my-posh -Scope CurrentUser -Force -AllowClobber | Out-Null
@@ -56,8 +56,10 @@ function Get-ThemePath {
     )
 
     # Intenta obtener la ruta local del tema
-    $themePath = Join-Path $env:POSH_THEMES_PATH "$ThemeName.omp.json"
-    if (Test-Path $themePath) { return $themePath }
+    $themePath = Join-Path $env:POSH_THEMES_PATH "$ThemeName"
+    if (Test-Path $themePath) { 
+        return $themePath 
+    }
     return $ThemeName # Retorna el nombre si no encuentra la ruta física
 }
 
@@ -105,4 +107,7 @@ if (-not $themePath) {
 
 oh-my-posh init pwsh --config "$themePath" | Invoke-Expression
 Update-ProfileWithTheme -ThemePath $themePath
+
 Write-Host "¡Listo! Oh My Posh configurado con el tema: $themeName" -ForegroundColor Green
+Write-Host "El perfil se actualizó en: $($PROFILE.CurrentUserAllHosts)" -ForegroundColor Cyan
+Write-Host "La configuración se aplicará automáticamente en nuevas sesiones de PowerShell." -ForegroundColor Cyan
