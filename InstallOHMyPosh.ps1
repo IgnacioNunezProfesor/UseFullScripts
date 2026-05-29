@@ -3,30 +3,38 @@
 $defaultTheme = "takuya.omp.json"
 
 function EnsureOhMyPosh {
+    Write-Host "Ensuring Oh My Posh..." -ForegroundColor Green
     if (-not (Get-Command oh-my-posh -ErrorAction SilentlyContinue)) {
-        Write-Host "Instalando Oh My Posh..." -ForegroundColor Green
+        Write-Host "Oh My Posh no está instalado ..." -ForegroundColor Red
         if (Get-Command winget -ErrorAction SilentlyContinue) {
+            Write-Host "Winget present, Installing Oh My Posh..." -ForegroundColor Green
             winget install --id JanDeDobbeleer.OhMyPosh -e --accept-source-agreements --accept-package-agreements | Out-Null
             # Forzar la recarga de la ruta para que el comando esté disponible de inmediato
             $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
         }
         else {
+            Write-Host "Winget not present, Installing as Module: Oh My Posh..." -ForegroundColor Green
             Install-Module oh-my-posh -Scope CurrentUser -Force -AllowClobber | Out-Null
         }
     }
-
-    # Asegurar que los temas estén descargados y la variable de entorno configurada
+    Write-Host "Checking if POSH_THEMES_PATH is present. " -ForegroundColor Green
+            
     if (-not $env:POSH_THEMES_PATH) {
+        Write-Host "env POSH_THEMES_PATH doesn't exists. Creating..." -ForegroundColor Red      
         $env:POSH_THEMES_PATH = Join-Path $env:LOCALAPPDATA "oh-my-posh\themes"
     }
     
+    Write-Host "POSH_THEMES_PATH: $env:POSH_THEMES_PATH directory exist?"
     if (-not (Test-Path $env:POSH_THEMES_PATH)) {
-        Write-Host "Descargando temas de Oh My Posh..." -ForegroundColor Cyan
+        Write-Host "Folder doesn't exists... " -ForegroundColor Red
         New-Item -ItemType Directory -Path $env:POSH_THEMES_PATH -Force | Out-Null
     }
 
+
     # Comprobar si hay archivos de temas, si no, descargarlos
+    Write-Host "POSH_THEMES_PATH: $env:POSH_THEMES_PATH directory contents themes?" -ForegroundColor Blue
     if (-not (Get-ChildItem -Path $env:POSH_THEMES_PATH -Filter "*.omp.json" -ErrorAction SilentlyContinue)) {
+        Write-Host "POSH_THEMES_PATH: $env:POSH_THEMES_PATH directory contents themes?" -ForegroundColor Red
         Invoke-WebRequest -Uri "https://github.com/JanDeDobbeleer/oh-my-posh/releases/latest/download/themes.zip" -OutFile "$env:TEMP\themes.zip"
         Expand-Archive -Path "$env:TEMP\themes.zip" -DestinationPath $env:POSH_THEMES_PATH -Force
         Remove-Item "$env:TEMP\themes.zip"
@@ -85,6 +93,7 @@ function Update-ProfileWithTheme {
     }
 
     Set-Content -Path $profileFile -Value $profileContent -Force
+    Write-Host "Comando ejecutado $profileContent" -ForegroundColor Cyan
     Write-Host "Perfil actualizado en $profileFile" -ForegroundColor Cyan
 }
 
@@ -94,16 +103,17 @@ if ($IsWindows -and -not ([Security.Principal.WindowsPrincipal] [Security.Princi
 }
 
 EnsureOhMyPosh
-#$themeName = Get-RandomOhMyPoshTheme
-$themeName = $defaultTheme
+$themeName = Get-RandomOhMyPoshTheme
+#$themeName = $defaultTheme
 if (-not $themeName) { exit 1 }
 
 Write-Host "Tema seleccionado: $themeName" -ForegroundColor Yellow
-$themePath = Get-ThemePath -ThemeName $themeName
+$themePath = "$env:POSH_THEMES_PATH\$themeName"
 if (-not $themePath) {
     Write-Error "No se pudo obtener la ruta del tema $themeName."
     exit 1
 }
+Write-Host "Ruta del tema: $themePath" -ForegroundColor Cyan
 
 oh-my-posh init pwsh --config "$themePath" | Invoke-Expression
 Update-ProfileWithTheme -ThemePath $themePath
