@@ -43,7 +43,7 @@ function EnsureOhMyPosh {
 
 function Get-RandomOhMyPoshTheme {
     # Intenta obtener los temas buscando archivos .omp.json en la ruta de temas
-    $themes = Get-ChildItem -Path $env:POSH_THEMES_PATH -Filter "*.omp.json" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty BaseName
+    $themes = Get-ChildItem -Path $env:POSH_THEMES_PATH -Filter "*.omp.json" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
     
     # Fallback: si no hay archivos, intenta usar el comando oficial
     if (-not $themes) {
