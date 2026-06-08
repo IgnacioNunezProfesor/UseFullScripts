@@ -12,9 +12,23 @@ echo -e "${GREEN}Descargando binario...${NC}"
 sudo wget https://github.com/JanDeDobbeleer/oh-my-posh/releases/latest/download/posh-linux-amd64 -O /usr/local/bin/oh-my-posh
 sudo chmod +x /usr/local/bin/oh-my-posh
 
-# 2. Instalar una Nerd Font (Meslo LGM NF es la recomendada)
-echo -e "${GREEN}Instalando Nerd Font (Meslo LGM NF)...${NC}"
-oh-my-posh font install meslo
+# 2. Instalar una Nerd Font (MesloLGS NF es la recomendada)
+echo -e "${GREEN}Instalando Nerd Font MesloLGS NF...${NC}"
+FONT_DIR="$HOME/.local/share/fonts/MesloLGS NF"
+mkdir -p "$FONT_DIR"
+wget -q https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Meslo.zip -O /tmp/meslo.zip
+unzip -o /tmp/meslo.zip -d "$FONT_DIR"
+fc-cache -f "$FONT_DIR"
+rm /tmp/meslo.zip
+
+echo -e "${GREEN}Configurando terminal para usar MesloLGS NF...${NC}"
+if command -v gsettings &> /dev/null; then
+    PROFILE=$(gsettings get org.gnome.Terminal.ProfilesList default | tr -d "'")
+    if [ -n "$PROFILE" ]; then
+        gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" font 'MesloLGS NF 12'
+        gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" use-system-font false
+    fi
+fi
 
 # 3. Crear directorio de temas y descargar temas predeterminados
 mkdir -p ~/.poshthemes
@@ -36,6 +50,9 @@ if [ -n "$ZSH_VERSION" ]; then
 elif [[ "$SHELL" == *"zsh"* ]]; then
     SHELL_RC="$HOME/.zshrc"
 fi
+
+
+
 
 echo -e "${GREEN}Configurando $SHELL_RC...${NC}"
 
