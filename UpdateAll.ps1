@@ -16,7 +16,7 @@ function ActualizarTodo {
         Install-Module PSWindowsUpdate -Force -Scope CurrentUser
     }
     Import-Module PSWindowsUpdate
-    Get-WindowsUpdate -AcceptAll -Install -AutoReboot
+    Get-WindowsUpdate -AcceptAll -Install
 
     # Actualizar aplicaciones de Microsoft Store
     Write-Host "`n🛍️ Actualizando aplicaciones de Microsoft Store..."
