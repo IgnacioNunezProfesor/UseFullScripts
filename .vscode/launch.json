@@ -7,7 +7,7 @@
             "script": "${workspaceFolder}/UpdateAll.ps1",
             "cwd": "${cwd}"
         },
-                {
+        {
             "name": "PowerShell Launch Install OhMyPosh",
             "type": "PowerShell",
             "request": "launch",
