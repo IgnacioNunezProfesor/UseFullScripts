@@ -1,26 +1,28 @@
 # =============================================================================
 # CONFIGURACIÓN DE CREDENCIALES ADMINISTRATIVAS PARA AUTO-ELEVACIÓN
 # =============================================================================
+# Set-ExecutionPolicy Bypass -Scope LocalMachine -Force
+
+# Forzar a la consola de PowerShell a usar codificación UTF-8 para la salida de texto
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 $AdminUser = "Profesor"
 $AdminPass = "Prof-A21"
 
-# Función para comprobar si la sesión actual ya es Administrador
 function Test-IsAdmin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-# Si NO es administrador, se relanza a sí mismo usando la versión de PowerShell activa
 if (-not (Test-IsAdmin)) {
-    Write-Host "Elevando privilegios con la cuenta de $AdminUser..." -ForegroundColor Yellow
+    Write-Output "Elevando privilegios con la cuenta de $AdminUser..."
     
     $SecurePass = ConvertTo-SecureString $AdminPass -AsPlainText -Force
     $Credenciales = New-Object System.Management.Automation.PSCredential($AdminUser, $SecurePass)
     
     $ScriptPath = $MyInvocation.MyCommand.Path
-    
-    # Detecta dinámicamente si estamos en PowerShell Core (pwsh) o Windows PowerShell (powershell)
     $PSEngine = if ($PSVersionTable.PSVersion.Major -ge 6) { "pwsh.exe" } else { "powershell.exe" }
     
     try {
@@ -34,16 +36,15 @@ if (-not (Test-IsAdmin)) {
 }
 
 # =============================================================================
-# COMIENZO DEL SCRIPT (Universal: Windows PowerShell 5.1 & PowerShell 7+)
+# COMIENZO DEL SCRIPT (Universal y limpio de Write-Host)
 # =============================================================================
 
 $NuevaDescripcion = "MAÑANA"
 
-# Traducción universal del SID (S-1-5-32-545) para obtener el nombre del grupo "Usuarios" en cualquier idioma
+# Traducción universal del SID (S-1-5-32-545) para obtener el nombre del grupo "Usuarios"
 $SidUsuarios = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-32-545")
 $GrupoUsuariosSistema = $SidUsuarios.Translate([System.Security.Principal.NTAccount]).Value.Split("\")[1]
 
-# Lista de alumnos y contraseñas
 $UsuariosYContrasenas = @(
     @{ Nombre = "1ESO"; Password = "ESOalumno1" },
     @{ Nombre = "2ESO"; Password = "ESOalumno2" },
@@ -55,26 +56,28 @@ $UsuariosYContrasenas = @(
     @{ Nombre = "2BACHTPYC"; Password = "alumno2BP" }
 )
 
-Write-Host "=== Iniciando configuración del sistema ===" -ForegroundColor Cyan
-Write-Host "Motor: $($PSVersionTable.PSEdition) v$($PSVersionTable.PSVersion)" -ForegroundColor Cyan
-Write-Host "Ejecutando como: $env:USERNAME" -ForegroundColor Cyan
+Write-Output "=== Iniciando configuración del sistema ==="
+Write-Output "Motor: $($PSVersionTable.PSEdition) v$($PSVersionTable.PSVersion)"
+Write-Output "Ejecutando como: $env:USERNAME"
 
 # =============================================================================
 # PASO 2: Modificar la descripción de la partición actual en el BCD
 # =============================================================================
-Write-Host "`n[1/2] Modificando la descripción en bcdedit..." -ForegroundColor Yellow
+Write-Output ""
+Write-Output "[1/2] Modificando la descripción en bcdedit..."
 try {
     bcdedit /set `{current`} description "$NuevaDescripcion"
-    Write-Host "✓ Descripción de {current} cambiada a '$NuevaDescripcion' con éxito." -ForegroundColor Green
+    Write-Output "CONSEGUIDO: Descripción de {current} cambiada a '$NuevaDescripcion'."
 }
 catch {
     Write-Error "Error al ejecutar bcdedit: $_"
 }
 
 # =============================================================================
-# PASO 3: Gestión de usuarios mediante [ADSI] (Máxima compatibilidad multiplataforma)
+# PASO 3: Gestión de usuarios mediante [ADSI]
 # =============================================================================
-Write-Host "`n[2/2] Procesando la lista de usuarios y contraseñas..." -ForegroundColor Yellow
+Write-Output ""
+Write-Output "[2/2] Procesando la lista de usuarios y contraseñas..."
 
 $ComputerContext = [ADSI]"WinNT://$env:COMPUTERNAME"
 $GroupContext = [ADSI]"WinNT://$env:COMPUTERNAME/$GrupoUsuariosSistema,group"
@@ -83,12 +86,10 @@ foreach ($Item in $UsuariosYContrasenas) {
     $Usuario = $Item.Nombre
     $PasswordTexto = $Item.Password
 
-    # Comprobación compatible de existencia de usuario
     $UserExists = $ComputerContext.Children | Where-Object { $_.SchemaClassName -eq "user" -and $_.Name -eq $Usuario }
 
     if (-not $UserExists) {
         try {
-            # Crear usuario
             $NewUser = $ComputerContext.Create("user", $Usuario)
             $NewUser.SetPassword($PasswordTexto)
             $NewUser.Put("Description", "Usuario para el aula: $Usuario")
@@ -99,11 +100,11 @@ foreach ($Item in $UsuariosYContrasenas) {
             $NewUser.Put("userFlags", 66048)
             $NewUser.SetInfo()
 
-            Write-Host "  ✓ Usuario '$Usuario' creado con éxito." -ForegroundColor Green
+            Write-Output "  -> Usuario '$Usuario' creado con éxito."
 
             # Añadir al grupo de Usuarios estándar
             $GroupContext.Add($NewUser.Path)
-            Write-Host "  ✓ '$Usuario' añadido al grupo local '$GrupoUsuariosSistema'." -ForegroundColor Green
+            Write-Output "  -> '$Usuario' añadido al grupo local '$GrupoUsuariosSistema'."
 
         }
         catch {
@@ -111,9 +112,10 @@ foreach ($Item in $UsuariosYContrasenas) {
         }
     }
     else {
-        Write-Host "El usuario '$Usuario' ya existe en este equipo. Saltando." -ForegroundColor Cyan
+        Write-Output "  INFO: El usuario '$Usuario' ya existe en este equipo. Saltando."
     }
 }
 
-Write-Host "`n=== Proceso finalizado correctamente ===" -ForegroundColor Green
-Read-Host "`nPresiona Intro para salir"
+Write-Output ""
+Write-Output "=== Proceso finalizado correctamente ==="
+Read-Host "Presiona Intro para salir"
