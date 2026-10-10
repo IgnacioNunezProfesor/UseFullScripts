@@ -14,6 +14,31 @@ if (-not $currentUser.IsInRole($adminRole)) {
     }
 }
 
+$freeSpaceBefore = @{}
+$spaceMeasurementIncomplete = $false
+try {
+    foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
+        if ($drive.DriveType -eq [System.IO.DriveType]::Fixed) {
+            try {
+                if ($drive.IsReady) {
+                    $freeSpaceBefore[$drive.Name] = $drive.AvailableFreeSpace
+                }
+                else {
+                    $spaceMeasurementIncomplete = $true
+                }
+            }
+            catch {
+                $spaceMeasurementIncomplete = $true
+                Write-Warning "No se pudo medir el espacio libre inicial en '$($drive.Name)': $($_.Exception.Message)"
+            }
+        }
+    }
+}
+catch {
+    $spaceMeasurementIncomplete = $true
+    Write-Warning "No se pudieron enumerar las unidades para medir el espacio libre inicial: $($_.Exception.Message)"
+}
+
 # Detiene servicio de Windows Update para limpiar su caché
 Write-Host "Deteniendo servicio wuauserv..." -ForegroundColor Cyan
 Stop-Service -Name wuauserv -ErrorAction SilentlyContinue
@@ -174,6 +199,9 @@ foreach ($regPath in $registryPaths) {
 # Verifica carpetas en Program Files sin aplicaciones instaladas
 Write-Host "Verificando carpetas en Program Files..." -ForegroundColor Cyan
 $programFiles = @("$env:ProgramFiles", "${env:ProgramFiles(x86)}")
+$deletedFolders = @()
+$keptFolders = @()
+$failedFolders = @()
 
 foreach ($folder in $programFiles) {
     if (Test-Path -LiteralPath $folder -PathType Container) {
@@ -190,10 +218,19 @@ foreach ($folder in $programFiles) {
                         Write-Host "Candidata para borrar: $($_.FullName) - Vacía: Sí" -ForegroundColor Yellow
                         $confirmation = Read-Host "¿Deseas borrar esta carpeta? (S/N)"
                         if ($confirmation -match '^(s|si|y|yes)$') {
-                            Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
-                            Write-Host "Carpeta borrada: $($_.FullName)" -ForegroundColor Yellow
+                            try {
+                                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
+                                $deletedFolders += $_.FullName
+                                Write-Host "Carpeta borrada: $($_.FullName)" -ForegroundColor Yellow
+                            }
+                            catch {
+                                $errorMessage = if ($_.Exception) { $_.Exception.Message } else { $_.ToString() }
+                                Write-Warning "Error al borrar la carpeta '$($_.FullName)': $errorMessage. Se continuará con las demás carpetas."
+                                $failedFolders += $_.FullName
+                            }
                         }
                         else {
+                            $keptFolders += $_.FullName
                             Write-Host "Carpeta conservada: $($_.FullName)"
                         }
                     }
@@ -211,4 +248,67 @@ foreach ($folder in $programFiles) {
     }
 }
 
-Write-Host "Verificación completada." -ForegroundColor Green
+Write-Host "Informe final de limpieza:" -ForegroundColor Cyan
+Write-Host ("  Borradas: {0}" -f $deletedFolders.Count)
+Write-Host ("  Conservadas tras confirmación negativa: {0}" -f $keptFolders.Count)
+Write-Host ("  Errores al borrar: {0}" -f $failedFolders.Count)
+if ($failedFolders.Count -gt 0) {
+    Write-Host ("  Carpetas con error: {0}" -f ($failedFolders -join '; ')) -ForegroundColor Yellow
+}
+
+try {
+    [long]$netSpaceChange = 0
+    [long]$freeSpaceAfterTotal = 0
+    $measuredDriveCount = 0
+    foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
+        if ($drive.DriveType -eq [System.IO.DriveType]::Fixed) {
+            try {
+                if (-not $drive.IsReady) {
+                    $spaceMeasurementIncomplete = $true
+                    continue
+                }
+
+                $freeSpaceAfter = $drive.AvailableFreeSpace
+                $freeSpaceAfterTotal += $freeSpaceAfter
+                if ($freeSpaceBefore.ContainsKey($drive.Name)) {
+                    $netSpaceChange += $freeSpaceAfter - [long]$freeSpaceBefore[$drive.Name]
+                    $measuredDriveCount++
+                }
+                else {
+                    $spaceMeasurementIncomplete = $true
+                }
+            }
+            catch {
+                $spaceMeasurementIncomplete = $true
+                Write-Warning "No se pudo medir el espacio libre final en '$($drive.Name)': $($_.Exception.Message)"
+            }
+        }
+    }
+
+    if ($measuredDriveCount -gt 0) {
+        $absoluteChange = [math]::Abs([double]$netSpaceChange)
+        $changeDescription = "{0:N0} bytes ({1:N2} GB)" -f $absoluteChange, ($absoluteChange / 1GB)
+        if ($netSpaceChange -gt 0) {
+            Write-Host "  Espacio liberado total neto: $changeDescription"
+        }
+        elseif ($netSpaceChange -lt 0) {
+            Write-Host "  Disminución neta del espacio libre: $changeDescription" -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "  Espacio liberado total neto: 0 bytes (0 GB)"
+        }
+        Write-Host ("  Espacio libre actual en las unidades medidas: {0:N0} bytes ({1:N2} GB)" -f $freeSpaceAfterTotal, ($freeSpaceAfterTotal / 1GB))
+        if ($spaceMeasurementIncomplete -or $measuredDriveCount -ne $freeSpaceBefore.Count) {
+            Write-Warning "La medición puede estar incompleta porque no se pudieron comparar todas las unidades fijas."
+        }
+        Write-Host "  Nota: el cambio es neto y puede incluir actividad simultánea del sistema."
+    }
+    else {
+        Write-Warning "No se pudo calcular el espacio liberado: no hay unidades fijas con mediciones inicial y final."
+    }
+}
+catch {
+    Write-Warning "No se pudo calcular el espacio liberado total: $($_.Exception.Message)"
+}
+
+Write-Host "Limpieza y verificación completadas." -ForegroundColor Green
