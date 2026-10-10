@@ -79,22 +79,44 @@ Start-Service -Name wuauserv -ErrorAction SilentlyContinue
 
 # Limpieza de registros de eventos
 Write-Host "Limpiando registros de eventos..." -ForegroundColor Cyan
-wevtutil el | ForEach-Object {
-    $log = $_.Trim()
-    if ($log) {
-        try {
-            & wevtutil.exe cl "$log"
-            if ($LASTEXITCODE -ne 0) {
-                throw "wevtutil devolvió código de salida $LASTEXITCODE para el registro '$log'."
+$cleanedLogs = @()
+$failedLogs = @()
+try {
+    $eventLogs = @(& wevtutil.exe el)
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "No se pudo obtener la lista de registros de eventos: wevtutil devolvió código de salida $LASTEXITCODE."
+    }
+    else {
+        foreach ($logEntry in $eventLogs) {
+            $log = $logEntry.Trim()
+            if ($log) {
+                try {
+                    & wevtutil.exe cl "$log"
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "wevtutil devolvió código de salida $LASTEXITCODE."
+                    }
+                    $cleanedLogs += $log
+                }
+                catch {
+                    $errorMessage = if ($_.Exception) { $_.Exception.Message } else { $_.ToString() }
+                    Write-Warning "Error al limpiar registro '${log}': $errorMessage. Se continuará con los demás registros."
+                    $failedLogs += $log
+                }
             }
-            Write-Host "Registro $log limpiado." -ForegroundColor Yellow
-        }
-        catch {
-            $errMsg = if ($_.Exception) { $_.Exception.Message } else { $_.ToString() }
-            Write-Warning "Error al limpiar registro ${log}: ${errMsg}"
         }
     }
-}   
+}
+catch {
+    $errorMessage = if ($_.Exception) { $_.Exception.Message } else { $_.ToString() }
+    Write-Warning "No se pudieron procesar los registros de eventos: $errorMessage. Se continuará con el resto de la limpieza."
+}
+
+if ($cleanedLogs.Count -gt 0) {
+    Write-Host ("Registros limpiados ({0}): {1}" -f $cleanedLogs.Count, ($cleanedLogs -join ', ')) -ForegroundColor Yellow
+}
+if ($failedLogs.Count -gt 0) {
+    Write-Warning ("No se pudieron limpiar {0} registro(s): {1}" -f $failedLogs.Count, ($failedLogs -join ', '))
+}
 
 # Ejecuta Liberador de espacio en disco (cleanmgr)
 Write-Host "Reduciendo el almacén de componentes con DISM..." -ForegroundColor Cyan
@@ -115,14 +137,16 @@ Write-Host "Limpieza completada con éxito." -ForegroundColor Green
 Write-Host "Limpiando caché de parches de MSI..." -ForegroundColor Cyan
 try {
     Stop-Service -Name msiserver -Force -ErrorAction Stop
-    New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\Installer" -Name "MaxPatchCacheSize" -Value 0 -PropertyType DWord -Force -ErrorAction Stop
-    $patchCachePath = "$env:WINDIR\Installer\$PatchCache$"
+    $installerPolicyPath = "HKLM:\Software\Policies\Microsoft\Windows\Installer"
+    New-Item -Path $installerPolicyPath -Force -ErrorAction Stop | Out-Null
+    New-ItemProperty -Path $installerPolicyPath -Name "MaxPatchCacheSize" -Value 0 -PropertyType DWord -Force -ErrorAction Stop
+    $patchCachePath = Join-Path $env:WINDIR 'Installer\$PatchCache$'
     if (Test-Path $patchCachePath) {
         Remove-Item -Path $patchCachePath -Recurse -Force -ErrorAction Stop
     }
     Start-Service -Name msiserver -ErrorAction Stop
     Stop-Service -Name msiserver -Force -ErrorAction Stop
-    New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\Installer" -Name "MaxPatchCacheSize" -Value 10 -PropertyType DWord -Force -ErrorAction Stop
+    New-ItemProperty -Path $installerPolicyPath -Name "MaxPatchCacheSize" -Value 10 -PropertyType DWord -Force -ErrorAction Stop
     Start-Service -Name msiserver -ErrorAction Stop
     Write-Host "Caché de parches de MSI limpiado." -ForegroundColor Yellow
 }
@@ -152,16 +176,35 @@ Write-Host "Verificando carpetas en Program Files..." -ForegroundColor Cyan
 $programFiles = @("$env:ProgramFiles", "${env:ProgramFiles(x86)}")
 
 foreach ($folder in $programFiles) {
-    if (Test-Path $folder) {
-        Get-ChildItem -Path $folder -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+    if (Test-Path -LiteralPath $folder -PathType Container) {
+        Get-ChildItem -LiteralPath $folder -Directory -ErrorAction Stop | ForEach-Object {
             $folderName = $_.Name
-            $hasExecutables = @(Get-ChildItem -Path $_.FullName -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue).Count -gt 0
+            $hasExecutables = @(Get-ChildItem -LiteralPath $_.FullName -Filter "*.exe" -File -Recurse -ErrorAction Stop).Count -gt 0
             
             if (-not $hasExecutables) {
                 if ($installedApps -notcontains $folderName) {
-                    $folderSize = (Get-ChildItem -Path $_.FullName -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
-                    $folderSizeMB = [math]::Round($folderSize / 1MB, 2)
-                    Write-Warning "Carpeta sin ejecutables y no registrada: $($_.FullName) - Tamaño: $folderSizeMB MB"
+                    $folderContents = @(Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction Stop)
+                    $isEmpty = $folderContents.Count -eq 0
+
+                    if ($isEmpty) {
+                        Write-Host "Candidata para borrar: $($_.FullName) - Vacía: Sí" -ForegroundColor Yellow
+                        $confirmation = Read-Host "¿Deseas borrar esta carpeta? (S/N)"
+                        if ($confirmation -match '^(s|si|y|yes)$') {
+                            Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
+                            Write-Host "Carpeta borrada: $($_.FullName)" -ForegroundColor Yellow
+                        }
+                        else {
+                            Write-Host "Carpeta conservada: $($_.FullName)"
+                        }
+                    }
+                    else {
+                        $folderSize = (Get-ChildItem -LiteralPath $_.FullName -File -Recurse -Force -ErrorAction Stop | Measure-Object -Property Length -Sum).Sum
+                        if ($null -eq $folderSize) {
+                            $folderSize = 0
+                        }
+                        $folderSizeMB = [math]::Round($folderSize / 1MB, 2)
+                        Write-Warning "Carpeta sin ejecutables y no registrada: $($_.FullName) - Vacía: No - Tamaño: $folderSizeMB MB. No se borrará automáticamente."
+                    }
                 }
             }
         }
