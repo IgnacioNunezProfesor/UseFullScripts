@@ -225,43 +225,27 @@ if ($failedFolders.Count -gt 0) {
     Write-Host ("  Carpetas con error: {0}" -f ($failedFolders -join '; ')) -ForegroundColor Yellow
 }
 
-# Analiza carpetas ocultas del perfil y de AppData sin modificarlas
-Write-Host "Analizando carpetas que comienzan por punto en el perfil y AppData..." -ForegroundColor Cyan
+# Analiza carpetas que comienzan por punto en la raíz del perfil y las compara con aplicaciones instaladas
+Write-Host "Analizando carpetas que comienzan por punto en el perfil..." -ForegroundColor Cyan
 $profilePath = $env:USERPROFILE
-$appDataPath = Join-Path $profilePath 'AppData'
-$registryPaths = @(
+$programInstallRoots = @(
+    $env:ProgramFiles,
+    ${env:ProgramFiles(x86)},
+    $env:ProgramW6432,
+    (Join-Path $env:LOCALAPPDATA 'Programs')
+) |
+    Where-Object { $_ } |
+    Select-Object -Unique
+$uninstallRegistryPaths = @(
     "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
     "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
-    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+    "HKCU:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
 )
-$installedAppNames = @()
-
-foreach ($registryPath in $registryPaths) {
-    if (Test-Path -LiteralPath $registryPath) {
-        try {
-            $appKeys = @(Get-ChildItem -LiteralPath $registryPath -ErrorAction Stop)
-            foreach ($appKey in $appKeys) {
-                try {
-                    $displayName = (Get-ItemProperty -LiteralPath $appKey.PSPath -ErrorAction Stop).DisplayName
-                    if ($displayName) {
-                        $installedAppNames += $displayName
-                    }
-                }
-                catch {
-                    Write-Warning "No se pudo leer una aplicación registrada en '$($appKey.PSPath)': $($_.Exception.Message)"
-                }
-            }
-        }
-        catch {
-            Write-Warning "No se pudo consultar el registro de aplicaciones '$registryPath': $($_.Exception.Message)"
-        }
-    }
-}
-
 $hiddenProfileFolders = @()
-$hiddenAppDataFolders = @()
 $profileScanErrors = @()
-$appDataScanErrors = @()
+$installedPrograms = @()
+$installedProgramsScanErrors = @()
 
 if (Test-Path -LiteralPath $profilePath -PathType Container) {
     try {
@@ -276,25 +260,81 @@ else {
     $profileScanErrors += "No existe la ruta del perfil '$profilePath'."
 }
 
-if (Test-Path -LiteralPath $appDataPath -PathType Container) {
+foreach ($installRoot in $programInstallRoots) {
+    if (-not (Test-Path -LiteralPath $installRoot -PathType Container)) {
+        continue
+    }
+
     try {
-        $hiddenAppDataFolders = @(Get-ChildItem -LiteralPath $appDataPath -Directory -Force -Recurse -ErrorAction Continue -ErrorVariable +appDataScanErrors |
-            Where-Object { $_.Name.StartsWith('.') })
+        $installedPrograms += @(Get-ChildItem -LiteralPath $installRoot -Directory -ErrorAction Stop |
+            ForEach-Object {
+                [PSCustomObject]@{
+                    Name = $_.Name
+                    Path = $_.FullName
+                }
+            })
     }
     catch {
-        $appDataScanErrors += $_
+        $installedProgramsScanErrors += "No se pudo analizar '$installRoot': $($_.Exception.Message)"
     }
 }
-else {
-    $profileScanErrors += "No existe la ruta de AppData '$appDataPath'."
+
+foreach ($registryPath in $uninstallRegistryPaths) {
+    if (-not (Test-Path -LiteralPath $registryPath)) {
+        continue
+    }
+
+    try {
+        $appKeys = @(Get-ChildItem -LiteralPath $registryPath -ErrorAction Stop)
+    }
+    catch {
+        $installedProgramsScanErrors += "No se pudo consultar '$registryPath': $($_.Exception.Message)"
+        continue
+    }
+
+    foreach ($appKey in $appKeys) {
+        try {
+            $app = Get-ItemProperty -LiteralPath $appKey.PSPath -ErrorAction Stop
+            if ($app.DisplayName) {
+                $installedPrograms += [PSCustomObject]@{
+                    Name = $app.DisplayName
+                    Path = $app.InstallLocation
+                }
+            }
+        }
+        catch {
+            $installedProgramsScanErrors += "No se pudo leer una aplicación de '$($appKey.PSPath)': $($_.Exception.Message)"
+        }
+    }
 }
 
-$hiddenFolders = @($hiddenProfileFolders) + @($hiddenAppDataFolders)
+try {
+    if (Get-Command -Name Get-AppxPackage -ErrorAction SilentlyContinue) {
+        $installedPrograms += @(Get-AppxPackage -ErrorAction Stop | ForEach-Object {
+            [PSCustomObject]@{
+                Name = $_.Name
+                Path = $_.InstallLocation
+            }
+        })
+    }
+    else {
+        $installedProgramsScanErrors += "No está disponible Get-AppxPackage para consultar aplicaciones de Microsoft Store."
+    }
+}
+catch {
+    $installedProgramsScanErrors += "No se pudieron consultar las aplicaciones de Microsoft Store: $($_.Exception.Message)"
+}
+
 $folderAnalysis = @()
-foreach ($hiddenFolder in $hiddenFolders) {
+foreach ($hiddenFolder in $hiddenProfileFolders) {
     $normalizedFolderName = [regex]::Replace($hiddenFolder.Name.TrimStart('.'), '[^a-zA-Z0-9]', '').ToLowerInvariant()
-    $matchingApp = $installedAppNames | Where-Object {
-        [regex]::Replace($_, '[^a-zA-Z0-9]', '').ToLowerInvariant() -eq $normalizedFolderName
+    $matchingProgram = $installedPrograms | Where-Object {
+        $normalizedName = [regex]::Replace($_.Name, '[^a-zA-Z0-9]', '').ToLowerInvariant()
+        $normalizedPathName = if ($_.Path) {
+            $installLocation = [Environment]::ExpandEnvironmentVariables($_.Path.Trim('"'))
+            [regex]::Replace((Split-Path $installLocation.TrimEnd('\', '/') -Leaf), '[^a-zA-Z0-9]', '').ToLowerInvariant()
+        }
+        $normalizedName -eq $normalizedFolderName -or $normalizedPathName -eq $normalizedFolderName
     } | Select-Object -First 1
 
     try {
@@ -304,7 +344,7 @@ foreach ($hiddenFolder in $hiddenFolders) {
             Path = $hiddenFolder.FullName
             Size = $folderSize
             SizeComplete = $true
-            MatchingApp = $matchingApp
+            MatchingProgram = $matchingProgram
         }
     }
     catch {
@@ -313,12 +353,12 @@ foreach ($hiddenFolder in $hiddenFolders) {
             Path = $hiddenFolder.FullName
             Size = $null
             SizeComplete = $false
-            MatchingApp = $matchingApp
+            MatchingProgram = $matchingProgram
         }
     }
 }
 
-$potentialFolders = @($folderAnalysis | Where-Object { -not $_.MatchingApp })
+$potentialFolders = @($folderAnalysis | Where-Object { -not $_.MatchingProgram })
 $topLevelPotentialFolders = @($potentialFolders | Where-Object {
     $candidatePath = $_.Path
     -not ($potentialFolders | Where-Object {
@@ -326,11 +366,10 @@ $topLevelPotentialFolders = @($potentialFolders | Where-Object {
     })
 })
 [long]$potentialSpace = 0
-$potentialSpaceComplete = $profileScanErrors.Count -eq 0 -and $appDataScanErrors.Count -eq 0
+$potentialSpaceComplete = $profileScanErrors.Count -eq 0 -and $installedProgramsScanErrors.Count -eq 0
 
-Write-Host "Informe de carpetas ocultas:" -ForegroundColor Cyan
+Write-Host "Informe de carpetas ocultas y aplicaciones instaladas:" -ForegroundColor Cyan
 Write-Host ("  Carpetas encontradas en el perfil: {0}" -f $hiddenProfileFolders.Count)
-Write-Host ("  Carpetas encontradas en AppData: {0}" -f $hiddenAppDataFolders.Count)
 foreach ($analysis in $folderAnalysis) {
     $sizeDescription = if ($analysis.SizeComplete) {
         "{0:N2} MB" -f ($analysis.Size / 1MB)
@@ -338,11 +377,16 @@ foreach ($analysis in $folderAnalysis) {
     else {
         "Tamaño no disponible (análisis incompleto)"
     }
-    $appDescription = if ($analysis.MatchingApp) {
-        "Coincidencia exacta con aplicación registrada: $($analysis.MatchingApp)"
+    $appDescription = if ($analysis.MatchingProgram) {
+        if ($analysis.MatchingProgram.Path) {
+            "Coincidencia con aplicación instalada: $($analysis.MatchingProgram.Name) ($($analysis.MatchingProgram.Path))"
+        }
+        else {
+            "Coincidencia con aplicación registrada: $($analysis.MatchingProgram.Name)"
+        }
     }
     else {
-        "Sin coincidencia exacta en aplicaciones registradas; revisar antes de considerar huérfana"
+        "Sin coincidencia en las ubicaciones consultadas ni en el Registro; revisar antes de considerar huérfana"
     }
     Write-Host ("  {0} | {1} | {2}" -f $analysis.Path, $sizeDescription, $appDescription)
 }
@@ -366,8 +410,8 @@ Write-Host "  La falta de coincidencia por nombre no confirma que el programa es
 if ($profileScanErrors.Count -gt 0) {
     $profileScanErrors | ForEach-Object { Write-Warning $_ }
 }
-if ($appDataScanErrors.Count -gt 0) {
-    Write-Warning ("No se pudieron analizar {0} elemento(s) de AppData; la búsqueda puede estar incompleta." -f $appDataScanErrors.Count)
+if ($installedProgramsScanErrors.Count -gt 0) {
+    $installedProgramsScanErrors | ForEach-Object { Write-Warning $_ }
 }
 
 try {
