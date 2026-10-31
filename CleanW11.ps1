@@ -180,80 +180,194 @@ catch {
 }
 
 
-# Obtiene aplicaciones instaladas
-Write-Host "Obteniendo aplicaciones instaladas..." -ForegroundColor Cyan
-$installedApps = @()
-$registryPaths = @(
-    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
-    "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
-)
-
-foreach ($regPath in $registryPaths) {
-    if (Test-Path $regPath) {
-        $installedApps += Get-ItemProperty "$regPath\*" -ErrorAction SilentlyContinue | 
-            Where-Object { $_.DisplayName } | 
-            Select-Object -ExpandProperty DisplayName
-    }
-}
-
-# Verifica carpetas en Program Files sin aplicaciones instaladas
-Write-Host "Verificando carpetas en Program Files..." -ForegroundColor Cyan
+# Informa sobre carpetas vacías en Program Files sin modificarlas
+Write-Host "Buscando carpetas vacías en Program Files..." -ForegroundColor Cyan
 $programFiles = @("$env:ProgramFiles", "${env:ProgramFiles(x86)}")
-$deletedFolders = @()
-$keptFolders = @()
+$emptyFolders = @()
 $failedFolders = @()
 
 foreach ($folder in $programFiles) {
     if (Test-Path -LiteralPath $folder -PathType Container) {
-        Get-ChildItem -LiteralPath $folder -Directory -ErrorAction Stop | ForEach-Object {
-            $folderName = $_.Name
-            $hasExecutables = @(Get-ChildItem -LiteralPath $_.FullName -Filter "*.exe" -File -Recurse -ErrorAction Stop).Count -gt 0
-            
-            if (-not $hasExecutables) {
-                if ($installedApps -notcontains $folderName) {
-                    $folderContents = @(Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction Stop)
-                    $isEmpty = $folderContents.Count -eq 0
+        try {
+            $childFolders = @(Get-ChildItem -LiteralPath $folder -Directory -ErrorAction Stop)
+        }
+        catch {
+            $errorMessage = if ($_.Exception) { $_.Exception.Message } else { $_.ToString() }
+            Write-Warning "Error al enumerar las carpetas de '$folder': $errorMessage. Se continuará con las demás rutas."
+            $failedFolders += $folder
+            continue
+        }
 
-                    if ($isEmpty) {
-                        Write-Host "Candidata para borrar: $($_.FullName) - Vacía: Sí" -ForegroundColor Yellow
-                        $confirmation = Read-Host "¿Deseas borrar esta carpeta? (S/N)"
-                        if ($confirmation -match '^(s|si|y|yes)$') {
-                            try {
-                                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
-                                $deletedFolders += $_.FullName
-                                Write-Host "Carpeta borrada: $($_.FullName)" -ForegroundColor Yellow
-                            }
-                            catch {
-                                $errorMessage = if ($_.Exception) { $_.Exception.Message } else { $_.ToString() }
-                                Write-Warning "Error al borrar la carpeta '$($_.FullName)': $errorMessage. Se continuará con las demás carpetas."
-                                $failedFolders += $_.FullName
-                            }
-                        }
-                        else {
-                            $keptFolders += $_.FullName
-                            Write-Host "Carpeta conservada: $($_.FullName)"
-                        }
-                    }
-                    else {
-                        $folderSize = (Get-ChildItem -LiteralPath $_.FullName -File -Recurse -Force -ErrorAction Stop | Measure-Object -Property Length -Sum).Sum
-                        if ($null -eq $folderSize) {
-                            $folderSize = 0
-                        }
-                        $folderSizeMB = [math]::Round($folderSize / 1MB, 2)
-                        Write-Warning "Carpeta sin ejecutables y no registrada: $($_.FullName) - Vacía: No - Tamaño: $folderSizeMB MB. No se borrará automáticamente."
-                    }
+        foreach ($childFolder in $childFolders) {
+            try {
+                $folderContents = @(Get-ChildItem -LiteralPath $childFolder.FullName -Force -ErrorAction Stop)
+                if ($folderContents.Count -eq 0) {
+                    $emptyFolders += $childFolder.FullName
                 }
+            }
+            catch {
+                $errorMessage = if ($_.Exception) { $_.Exception.Message } else { $_.ToString() }
+                Write-Warning "Error al procesar la carpeta '$($childFolder.FullName)': $errorMessage. Se continuará con las demás carpetas."
+                $failedFolders += $childFolder.FullName
             }
         }
     }
 }
 
-Write-Host "Informe final de limpieza:" -ForegroundColor Cyan
-Write-Host ("  Borradas: {0}" -f $deletedFolders.Count)
-Write-Host ("  Conservadas tras confirmación negativa: {0}" -f $keptFolders.Count)
-Write-Host ("  Errores al borrar: {0}" -f $failedFolders.Count)
+Write-Host "Informe de carpetas vacías:" -ForegroundColor Cyan
+Write-Host ("  Carpetas vacías encontradas: {0}" -f $emptyFolders.Count)
+if ($emptyFolders.Count -gt 0) {
+    $emptyFolders | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+}
+Write-Host "  No se ha borrado ninguna carpeta durante este análisis."
+Write-Host ("  Carpetas que no se pudieron analizar: {0}" -f $failedFolders.Count)
 if ($failedFolders.Count -gt 0) {
     Write-Host ("  Carpetas con error: {0}" -f ($failedFolders -join '; ')) -ForegroundColor Yellow
+}
+
+# Analiza carpetas ocultas del perfil y de AppData sin modificarlas
+Write-Host "Analizando carpetas que comienzan por punto en el perfil y AppData..." -ForegroundColor Cyan
+$profilePath = $env:USERPROFILE
+$appDataPath = Join-Path $profilePath 'AppData'
+$registryPaths = @(
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+    "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+)
+$installedAppNames = @()
+
+foreach ($registryPath in $registryPaths) {
+    if (Test-Path -LiteralPath $registryPath) {
+        try {
+            $appKeys = @(Get-ChildItem -LiteralPath $registryPath -ErrorAction Stop)
+            foreach ($appKey in $appKeys) {
+                try {
+                    $displayName = (Get-ItemProperty -LiteralPath $appKey.PSPath -ErrorAction Stop).DisplayName
+                    if ($displayName) {
+                        $installedAppNames += $displayName
+                    }
+                }
+                catch {
+                    Write-Warning "No se pudo leer una aplicación registrada en '$($appKey.PSPath)': $($_.Exception.Message)"
+                }
+            }
+        }
+        catch {
+            Write-Warning "No se pudo consultar el registro de aplicaciones '$registryPath': $($_.Exception.Message)"
+        }
+    }
+}
+
+$hiddenProfileFolders = @()
+$hiddenAppDataFolders = @()
+$profileScanErrors = @()
+$appDataScanErrors = @()
+
+if (Test-Path -LiteralPath $profilePath -PathType Container) {
+    try {
+        $hiddenProfileFolders = @(Get-ChildItem -LiteralPath $profilePath -Directory -Force -ErrorAction Stop |
+            Where-Object { $_.Name.StartsWith('.') })
+    }
+    catch {
+        $profileScanErrors += "No se pudo analizar '$profilePath': $($_.Exception.Message)"
+    }
+}
+else {
+    $profileScanErrors += "No existe la ruta del perfil '$profilePath'."
+}
+
+if (Test-Path -LiteralPath $appDataPath -PathType Container) {
+    try {
+        $hiddenAppDataFolders = @(Get-ChildItem -LiteralPath $appDataPath -Directory -Force -Recurse -ErrorAction Continue -ErrorVariable +appDataScanErrors |
+            Where-Object { $_.Name.StartsWith('.') })
+    }
+    catch {
+        $appDataScanErrors += $_
+    }
+}
+else {
+    $profileScanErrors += "No existe la ruta de AppData '$appDataPath'."
+}
+
+$hiddenFolders = @($hiddenProfileFolders) + @($hiddenAppDataFolders)
+$folderAnalysis = @()
+foreach ($hiddenFolder in $hiddenFolders) {
+    $normalizedFolderName = [regex]::Replace($hiddenFolder.Name.TrimStart('.'), '[^a-zA-Z0-9]', '').ToLowerInvariant()
+    $matchingApp = $installedAppNames | Where-Object {
+        [regex]::Replace($_, '[^a-zA-Z0-9]', '').ToLowerInvariant() -eq $normalizedFolderName
+    } | Select-Object -First 1
+
+    try {
+        $files = @(Get-ChildItem -LiteralPath $hiddenFolder.FullName -File -Force -Recurse -ErrorAction Stop)
+        [long]$folderSize = ($files | Measure-Object -Property Length -Sum).Sum
+        $folderAnalysis += [PSCustomObject]@{
+            Path = $hiddenFolder.FullName
+            Size = $folderSize
+            SizeComplete = $true
+            MatchingApp = $matchingApp
+        }
+    }
+    catch {
+        Write-Warning "No se pudo calcular el tamaño completo de '$($hiddenFolder.FullName)': $($_.Exception.Message)"
+        $folderAnalysis += [PSCustomObject]@{
+            Path = $hiddenFolder.FullName
+            Size = $null
+            SizeComplete = $false
+            MatchingApp = $matchingApp
+        }
+    }
+}
+
+$potentialFolders = @($folderAnalysis | Where-Object { -not $_.MatchingApp })
+$topLevelPotentialFolders = @($potentialFolders | Where-Object {
+    $candidatePath = $_.Path
+    -not ($potentialFolders | Where-Object {
+        $_.Path -ne $candidatePath -and $candidatePath.StartsWith($_.Path.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)
+    })
+})
+[long]$potentialSpace = 0
+$potentialSpaceComplete = $profileScanErrors.Count -eq 0 -and $appDataScanErrors.Count -eq 0
+
+Write-Host "Informe de carpetas ocultas:" -ForegroundColor Cyan
+Write-Host ("  Carpetas encontradas en el perfil: {0}" -f $hiddenProfileFolders.Count)
+Write-Host ("  Carpetas encontradas en AppData: {0}" -f $hiddenAppDataFolders.Count)
+foreach ($analysis in $folderAnalysis) {
+    $sizeDescription = if ($analysis.SizeComplete) {
+        "{0:N2} MB" -f ($analysis.Size / 1MB)
+    }
+    else {
+        "Tamaño no disponible (análisis incompleto)"
+    }
+    $appDescription = if ($analysis.MatchingApp) {
+        "Coincidencia exacta con aplicación registrada: $($analysis.MatchingApp)"
+    }
+    else {
+        "Sin coincidencia exacta en aplicaciones registradas; revisar antes de considerar huérfana"
+    }
+    Write-Host ("  {0} | {1} | {2}" -f $analysis.Path, $sizeDescription, $appDescription)
+}
+
+foreach ($candidate in $topLevelPotentialFolders) {
+    if ($candidate.SizeComplete) {
+        $potentialSpace += [long]$candidate.Size
+    }
+    else {
+        $potentialSpaceComplete = $false
+    }
+}
+$potentialSpaceDescription = if ($potentialSpaceComplete) {
+    "{0:N2} MB" -f ($potentialSpace / 1MB)
+}
+else {
+    "al menos {0:N2} MB; hay carpetas cuyo tamaño no se pudo calcular" -f ($potentialSpace / 1MB)
+}
+Write-Host ("  Espacio potencialmente recuperable, sin duplicar carpetas anidadas: {0}" -f $potentialSpaceDescription)
+Write-Host "  La falta de coincidencia por nombre no confirma que el programa esté desinstalado. No se ha borrado ninguna carpeta."
+if ($profileScanErrors.Count -gt 0) {
+    $profileScanErrors | ForEach-Object { Write-Warning $_ }
+}
+if ($appDataScanErrors.Count -gt 0) {
+    Write-Warning ("No se pudieron analizar {0} elemento(s) de AppData; la búsqueda puede estar incompleta." -f $appDataScanErrors.Count)
 }
 
 try {

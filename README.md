@@ -74,6 +74,8 @@ Clic derecho en el script → **Crear acceso directo** → Editar propiedades:
   - `C:\Windows\Prefetch` (archivos preformateados)
 - Vacía la Papelera de Reciclaje
 - Reinicia el servicio de Windows Update
+- Analiza las carpetas de `Program Files` y muestra un informe de las vacías, sin borrarlas
+- Analiza carpetas que comienzan por punto en el perfil y `AppData`, informa tamaños y espacio potencialmente recuperable sin borrarlas
 
 **Requisitos:** Permisos de administrador
 
